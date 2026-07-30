@@ -277,3 +277,46 @@ def save_weights(ibme_out_dir, struc_path, grid_path, dro, r0):
     print(f"Success! Top structure weights saved to: {weights_out}")
 
     return str(weights_out)
+
+def plot_saxs_results(compiled_calc_path, experiment_path, weights_file, save_path, pdb_names):
+    #Adapted from ensemble_fit.py
+    exp_pd = pd.read_csv(experiment_path, header=None, sep=r"\s+")
+    s = exp_pd.iloc[:, 0].values
+    iq_exp = exp_pd.iloc[:, 1].values
+    err_exp = exp_pd.iloc[:, 2].values if exp_pd.shape[1] > 2 else np.zeros_like(s)
+
+    sim_df = pd.read_csv(compiled_calc_path, sep='\s+', header=None)
+    iq_sim_matrix = sim_df.drop(columns=[0]).values
+
+    weights_df = pd.read_csv(weights_file, sep='\t', header=0)
+    weight_map = dict(zip(weights_df['PDB_Name'], weights_df['1']))
+    ordered_weights = np.array([weight_map.get(name, 0.0) for name in pdb_names])
+
+    prior_iq = np.mean(iq_sim_matrix, axis=0)
+    weighted_matrix = iq_sim_matrix * ordered_weights[:, np.newaxis]
+    posterior_iq = np.sum(weighted_matrix, axis=0)
+
+    sim_length = iq_sim_matrix.shape[1]
+    s_trun = s[:sim_length]
+    iq_trun = iq_exp[:sim_length]
+    err_trun = err_exp[:sim_length]
+
+    scale_post = np.sum(iq_trun * posterior_iq) / np.sum(posterior_iq ** 2)
+    scaled_posterior = posterior_iq * scale_post
+    scale_prior = np.sum(iq_trun * prior_iq) / np.sum(prior_iq ** 2)
+    scaled_prior = prior_iq * scale_prior
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.errorbar(s_trun, iq_trun, yerr=err_trun, fmt='o', zorder=1, markersize=3, ecolor="lightgray",
+                label="Experiment")
+    ax.plot(s_trun, scaled_posterior, zorder=2, lw=3, label="Posterior", color="orange")
+    ax.plot(s_trun, scaled_prior, zorder=3, lw=3, label="Prior", color="green")
+    ax.set_yscale("log")
+    ax.set_ylabel("i(q)")
+    ax.set_xlabel("s")
+    ax.set_title("Simulated SAXS fit with Experiment")
+    ax.legend(loc="upper right")
+
+    plot_out = os.path.join(save_path, "truncated_fit.png")
+    fig.savefig(plot_out, dpi=300)
+    print(f"Plot saved to {plot_out}")
