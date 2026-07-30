@@ -94,4 +94,21 @@ def weights_analysis(run_fol, structure_path, grid_line, dro, r0):
     #Find and save current weights
     weights_out = ibme_tools.save_weights(run_fol, structure_path, grid_line, dro, r0)
 
+    return weights_out
 
+def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0, theta):
+
+    #Run pepsi
+    run_pepsi(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0)
+
+    #Run iBME
+    run_fol = run_ibme(structure_path, experiment_path, theta, save_path, dro, r0)
+
+    #Analysis
+    weights_path = weights_analysis(run_fol, structure_path, grid_line, dro, r0)
+
+    return weights_path
+
+#####----- MAIN
+if __name__ == "__main__":
+    path_weights = main(args.structure_path, args.pepsi_path, args.experiment_path, args.save_path, args.grid_line, args.dro, args.r0, args.theta)
