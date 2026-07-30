@@ -275,3 +275,5 @@ def save_weights(ibme_out_dir, struc_path, grid_path, dro, r0):
     opt_sorted.to_csv(weights_out, index=None, sep='\t')
 
     print(f"Success! Top structure weights saved to: {weights_out}")
+
+    return str(weights_out)
