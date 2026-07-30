@@ -320,3 +320,5 @@ def plot_saxs_results(compiled_calc_path, experiment_path, weights_file, save_pa
     plot_out = os.path.join(save_path, "truncated_fit.png")
     fig.savefig(plot_out, dpi=300)
     print(f"Plot saved to {plot_out}")
+
+    return str(plot_out)

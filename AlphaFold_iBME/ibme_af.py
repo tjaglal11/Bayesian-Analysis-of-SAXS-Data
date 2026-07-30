@@ -1,14 +1,14 @@
 #####----- New pipeline for implementation of SAXS simulation and iBME refinement into AlphaFold framework
-import sys
 import os
 import argparse
 import subprocess
-from pipeline_main_efficient import ibme_tools
+from AlphaFold_iBME import ibme_tools
 import pandas as pd
 import numpy as np
 from gp_files import iBME_script
 import glob
 import re
+from natsort import natsorted
 
 #####----- ARGUMENTS
 parser = argparse.ArgumentParser(description="Run iBME on AlphaFold output")
@@ -16,7 +16,7 @@ parser.add_argument("structure_path", type=str)
 parser.add_argument("pepsi_path", type=str)
 parser.add_argument("dro", type=str)
 parser.add_argument("r0", type=str)
-parser.add_argument("grid_line", type=str)
+parser.add_argument("grid_line", type=str) #index for grid file must be 1, not 0
 parser.add_argument("theta", type=float)
 parser.add_argument("experiment_path", type=str)
 parser.add_argument("save_path", type=str)
@@ -27,7 +27,7 @@ args = parser.parse_args()
 def run_pepsi(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0):
 
     #Run Pepsi SAXS on input structures
-    run = subprocess.run([f"{pepsi_path}/do_gp.sh", structure_path, experiment_path, 0, 0, grid_line, save_path],
+    run = subprocess.run([f"{pepsi_path}/do_gp.sh", structure_path, experiment_path, 0, 1, grid_line, save_path],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     if run.returncode == 0:
@@ -87,28 +87,32 @@ def run_ibme(structure_path, experiment_path, theta, save_path, dro, r0):
     frames = pd.DataFrame(rows, columns=["idx", "d_rho", "r0", "CHI2_before", "CHI2_after", "PHI_eff"])
     results.append(frames)
 
-    return str(run_fol)
-
-def weights_analysis(run_fol, structure_path, grid_line, dro, r0):
-
-    #Find and save current weights
-    weights_out = ibme_tools.save_weights(run_fol, structure_path, grid_line, dro, r0)
-
-    return weights_out
+    return str(run_fol), results
 
 def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0, theta):
 
     #Run pepsi
+    print(f"Running Pepsi SAXS simulation at dro={dro} and r0={r0}!")
     run_pepsi(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0)
 
     #Run iBME
-    run_fol = run_ibme(structure_path, experiment_path, theta, save_path, dro, r0)
+    print(f"Running iBME at dro={dro} and r0={r0}!")
+    run_fol, results = run_ibme(structure_path, experiment_path, theta, save_path, dro, r0)
+
+    results_sorted = natsorted(results, key=lambda x: x[0])
+    pdb_names = [os.path.basename(f[0]).replace('.pdb', '') for f in results_sorted]
 
     #Analysis
-    weights_path = weights_analysis(run_fol, structure_path, grid_line, dro, r0)
+    print(f"Saving posterior weights to {run_fol}/structure_weights_sorted_{dro}_{r0}.txt!")
+    weights_path = ibme_tools.save_weights(run_fol, structure_path, grid_line, dro, r0)
 
-    return weights_path
+    gp0_dir = os.path.join(save_path, "GP0")
+    compiled_calc_path = os.path.join(gp0_dir, "calc_saxs.txt")
+
+    print(f"Saving SAXS curve plot to {run_fol}!")
+    plot_path = ibme_tools.plot_saxs_results(compiled_calc_path, experiment_path, weights_path, run_fol, pdb_names)
+    return weights_path, plot_path
 
 #####----- MAIN
 if __name__ == "__main__":
-    path_weights = main(args.structure_path, args.pepsi_path, args.experiment_path, args.save_path, args.grid_line, args.dro, args.r0, args.theta)
+    path_weights, plot_path = main(args.structure_path, args.pepsi_path, args.experiment_path, args.save_path, args.grid_line, args.dro, args.r0, args.theta)
