@@ -24,7 +24,7 @@ if [[ ! -f "$exp_path" ]]; then
 fi
 
 # Get sorted list of structure files named mm016_*.pdb
-structure_files=( $(find "$structures" -name "mm*.pdb" | sort -V) )
+structure_files=( $(find "$structures" -name "*.pdb" | sort -V) )
 ens_size=${#structure_files[@]}
 
 # Choose mode: single grid point or all
