@@ -47,7 +47,7 @@ def run_ibme(structure_path, experiment_path, theta, save_path, dro, r0):
     ibme_out_dir = os.path.join(save_path, run_fol)
     os.makedirs(ibme_out_dir, exist_ok=True)
 
-    results = []
+    #results = []
 
     # Add # DATA=SAXS header to the compiled file
     calc_path = os.path.join(save_path, "GP1/calc_saxs.txt")
@@ -86,9 +86,9 @@ def run_ibme(structure_path, experiment_path, theta, save_path, dro, r0):
                fmt="%.6g")
 
     frames = pd.DataFrame(rows, columns=["idx", "d_rho", "r0", "CHI2_before", "CHI2_after", "PHI_eff"])
-    results.append(frames)
+    #results.append(frames)
 
-    return str(run_fol), results
+    return str(run_fol), frames
 
 def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0, theta):
 
@@ -120,8 +120,9 @@ def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro,
     #Plot the results on a SAXS trajectory
     print(f"Saving SAXS curve plot to {run_fol}...")
     plot_path = ibme_tools.plot_saxs_results(compiled_calc_path, experiment_path, weights_path, run_fol, pdb_names, prior_rg, post_rg, exp_rg)
-    return weights_path, plot_path
+
+    return weights_path, plot_path, results
 
 #####----- MAIN
 if __name__ == "__main__":
-    path_weights, plot_path = main(args.structure_path, args.pepsi_path, args.experiment_path, args.save_path, args.grid_line, args.dro, args.r0, args.theta)
+    path_weights, plot_path, results = main(args.structure_path, args.pepsi_path, args.experiment_path, args.save_path, args.grid_line, args.dro, args.r0, args.theta)
