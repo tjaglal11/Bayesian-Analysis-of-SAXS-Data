@@ -22,6 +22,7 @@ parser.add_argument("experiment_path", type=str)
 parser.add_argument("save_path", type=str)
 args = parser.parse_args()
 
+exp_rg = 4.6
 #####----- RUN
 
 def run_pepsi(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0):
@@ -91,11 +92,11 @@ def run_ibme(structure_path, experiment_path, theta, save_path, dro, r0):
 
 def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0, theta):
 
-    #Run pepsi
+    ##Run pepsi
     print(f"Running Pepsi SAXS simulation at dro={dro} and r0={r0}...")
     run_pepsi(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0)
 
-    #Run iBME
+    ##Run iBME
     print(f"Running iBME at dro={dro} and r0={r0}...")
     run_fol, results = run_ibme(structure_path, experiment_path, theta, save_path, dro, r0)
 
@@ -103,15 +104,22 @@ def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro,
     all_pdbs = glob.glob(os.path.join(structure_path, "*.pdb"))
     pdb_names = [os.path.basename(f) for f in natsorted(all_pdbs)]
 
-    #Analysis
+    ##Analysis
+
+    #Save posterior weights
     print(f"Saving posterior weights to {run_fol}/structure_weights_sorted_{dro}_{r0}.txt...")
     weights_path = ibme_tools.save_weights(run_fol, structure_path, grid_line, dro, r0)
 
     gp0_dir = os.path.join(save_path, "GP1")
     compiled_calc_path = os.path.join(gp0_dir, "calc_saxs.txt")
 
+    #Grab the Rg values
+    print(f"Grabbing Rg values...")
+    prior_rg, post_rg = ibme_tools.cterm_grab_rg(weights_path, save_path, pdb_names)
+
+    #Plot the results on a SAXS trajectory
     print(f"Saving SAXS curve plot to {run_fol}...")
-    plot_path = ibme_tools.plot_saxs_results(compiled_calc_path, experiment_path, weights_path, run_fol, pdb_names)
+    plot_path = ibme_tools.plot_saxs_results(compiled_calc_path, experiment_path, weights_path, run_fol, pdb_names, prior_rg, post_rg, exp_rg)
     return weights_path, plot_path
 
 #####----- MAIN

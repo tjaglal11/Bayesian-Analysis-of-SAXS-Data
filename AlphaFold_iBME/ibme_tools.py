@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import subprocess
 import time
 import re
+import matplotlib.lines as mlines
 
 def concat_gp(save_path):
     grid_df = pd.read_csv(os.path.join(save_path, "grid_full.txt"), sep='\s+', header=None, names=['index', 'dro', 'r0'])
@@ -281,7 +282,7 @@ def save_weights(ibme_out_dir, struc_path, grid_path, dro, r0):
 
     return str(weights_out)
 
-def plot_saxs_results(compiled_calc_path, experiment_path, weights_file, save_path, pdb_names):
+def plot_saxs_results(compiled_calc_path, experiment_path, weights_file, save_path, pdb_names, prior_rg, post_rg, exp_rg):
     #Adapted from ensemble_fit.py
     exp_pd = pd.read_csv(experiment_path, header=None, sep=r"\s+")
     s = exp_pd.iloc[:, 0].values
@@ -318,10 +319,45 @@ def plot_saxs_results(compiled_calc_path, experiment_path, weights_file, save_pa
     ax.set_ylabel("i(q)")
     ax.set_xlabel("s")
     ax.set_title("Simulated SAXS fit with Experiment")
-    ax.legend(loc="upper right")
+
+    leg_post = ax.legend(loc="upper right")
+    ax.add_artist(leg_post)
+
+    rg_handles = [mlines.Line2D([], [], color='none', label=f"Exp Rg: {exp_rg:.2f} nm")]
+    pri_label_text = f"Prior rg: {prior_rg:.2f} nm"
+    rg_handles.append(mlines.Line2D([], [], color='none', label=pri_label_text))
+    post_label_text = f"Posterior rg: {post_rg:.2f} nm"
+    rg_handles.append(mlines.Line2D([], [], color='none', label=post_label_text))
+
+    ax.legend(handles=rg_handles, loc='lower left', title="Radius of gyration", handlength=0, handletextpad=0)
 
     plot_out = os.path.join(save_path, "truncated_fit.png")
     fig.savefig(plot_out, dpi=300)
     print(f"Plot saved to {plot_out}")
 
     return str(plot_out)
+
+def cterm_grab_rg(sim_file, save_path, pdb_names):
+    sim_pd = pd.read_csv(sim_file, sep='\t', header=0)
+    #sim_pd["PDB_Name"] = sim_pd["PDB_Name"].str.replace(".pdb", "", regex=False)
+    weight_map = dict(zip(sim_pd['PDB_Name'], sim_pd['1']))
+    ordered_weights = np.array([weight_map.get(name, 0.0) for name in pdb_names])
+
+    #grid_df = pd.read_csv(os.path.join(save_path, "grid_full.txt"), sep='\s+', header=None,
+                          #names=['index', 'dro', 'r0'])
+    #gp = grid_df.loc[(grid_df['dro'] == dro) & (grid_df['r0'] == r0), 'index'].iloc[0]
+
+    search_pattern = os.path.join(save_path, f"GP1", "Rg_env.dat")
+    sorted_files = natsorted(glob.glob(search_pattern))
+
+    rg_list = []
+    for file in sorted_files:
+        data = pd.read_csv(file, sep='\s+', header=None, names=['Rg'])
+        rg_list.extend(data['Rg'].tolist())
+
+    rg_array = np.array(rg_list)
+
+    prior_rg_real = np.mean(rg_array)
+    post_rg_real = np.sum(rg_array * ordered_weights)
+
+    return post_rg_real / 10, prior_rg_real / 10
