@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import subprocess
 import time
 import re
-import gp_files.iBME_script as iBME_script
 
 def concat_gp(save_path):
     grid_df = pd.read_csv(os.path.join(save_path, "grid_full.txt"), sep='\s+', header=None, names=['index', 'dro', 'r0'])
@@ -93,7 +92,7 @@ def slurm_wait(job_ids, poll_interval=30):
         time.sleep(poll_interval)
 
 def set_experiment(saxs_path, exp_path, trun_path):
-    sample_saxs = f"{saxs_path}/GP0/GP0_all_saxs.txt" #saxs_path here to sample all_saxs calculation
+    sample_saxs = f"{saxs_path}/GP1/calc_saxs.txt" #saxs_path here to sample all_saxs calculation
     sample_df = pd.read_csv(sample_saxs, sep='\s+', header=None)
     sim_length = len(sample_df.columns) - 1
 
@@ -242,11 +241,15 @@ def heatmap(grid_sum_path, ibme_out_dir, theta):
 
 def save_weights(ibme_out_dir, struc_path, grid_path, dro, r0):
     GRID_DF = pd.read_csv(grid_path, sep='\s+', header=None, names=['index', 'dro', 'r0'])
-    weight_idx = GRID_DF.index[(GRID_DF['dro'] == dro) & (GRID_DF['r0'] == r0)].tolist()[0]
-    best_gp_dir = os.path.join(ibme_out_dir, f"GP{weight_idx}")
+
+    dro_val = float(dro)
+    r0_val = float(r0)
+
+    weight_idx = GRID_DF.index[(GRID_DF['dro'] == dro_val) & (GRID_DF['r0'] == r0_val)].tolist()[0]
+    best_gp_dir = os.path.join(ibme_out_dir, f"GP1")
 
     # Dynamically find the last .weights.dat file
-    weight_files = glob.glob(os.path.join(best_gp_dir, "*.weights.dat"))
+    weight_files = glob.glob(os.path.join(ibme_out_dir, "*.weights.dat"))
     if not weight_files:
         raise FileNotFoundError(f"No .weights.dat files found in {best_gp_dir}")
 
@@ -285,7 +288,7 @@ def plot_saxs_results(compiled_calc_path, experiment_path, weights_file, save_pa
     iq_exp = exp_pd.iloc[:, 1].values
     err_exp = exp_pd.iloc[:, 2].values if exp_pd.shape[1] > 2 else np.zeros_like(s)
 
-    sim_df = pd.read_csv(compiled_calc_path, sep='\s+', header=None)
+    sim_df = pd.read_csv(compiled_calc_path, sep='\s+', header=None, comment='#')
     iq_sim_matrix = sim_df.drop(columns=[0]).values
 
     weights_df = pd.read_csv(weights_file, sep='\t', header=0)
