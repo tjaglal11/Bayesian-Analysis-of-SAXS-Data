@@ -115,7 +115,7 @@ def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro,
 
     #Grab the Rg values
     print(f"Grabbing Rg values...")
-    prior_rg, post_rg = ibme_tools.cterm_grab_rg(weights_path, save_path, pdb_names)
+    post_rg, prior_rg = ibme_tools.cterm_grab_rg(weights_path, save_path, pdb_names)
 
     #Plot the results on a SAXS trajectory
     print(f"Saving SAXS curve plot to {run_fol}...")
