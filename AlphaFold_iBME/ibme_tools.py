@@ -361,3 +361,10 @@ def cterm_grab_rg(sim_file, save_path, pdb_names):
     post_rg_real = np.sum(rg_array * ordered_weights)
 
     return post_rg_real / 10, prior_rg_real / 10
+
+def parse_grid(grid_line):
+    grid_df = pd.read_csv(grid_line, sep='\s+', header=None, names=['index', 'dro', 'r0'])
+    dro = grid_df['dro'].iloc[0]
+    r0 = grid_df['r0'].iloc[0]
+
+    return str(dro), str(r0)

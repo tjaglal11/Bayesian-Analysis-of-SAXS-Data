@@ -14,8 +14,6 @@ from natsort import natsorted
 parser = argparse.ArgumentParser(description="Run iBME on AlphaFold output")
 parser.add_argument("structure_path", type=str)
 parser.add_argument("pepsi_path", type=str)
-parser.add_argument("dro", type=str)
-parser.add_argument("r0", type=str)
 parser.add_argument("grid_line", type=str) #index for grid file must be 1, not 0
 parser.add_argument("theta", type=float)
 parser.add_argument("experiment_path", type=str)
@@ -90,7 +88,10 @@ def run_ibme(structure_path, experiment_path, theta, save_path, dro, r0):
 
     return str(run_fol), frames
 
-def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro, r0, theta):
+def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, theta):
+
+    ##Get params
+    dro, r0 = ibme_tools.parse_grid(grid_line)
 
     ##Run pepsi
     print(f"Running Pepsi SAXS simulation at dro={dro} and r0={r0}...")
@@ -125,4 +126,4 @@ def main(structure_path, pepsi_path, experiment_path, save_path, grid_line, dro,
 
 #####----- MAIN
 if __name__ == "__main__":
-    path_weights, plot_path, results = main(args.structure_path, args.pepsi_path, args.experiment_path, args.save_path, args.grid_line, args.dro, args.r0, args.theta)
+    path_weights, plot_path, results = main(args.structure_path, args.pepsi_path, args.experiment_path, args.save_path, args.grid_line, args.theta)
