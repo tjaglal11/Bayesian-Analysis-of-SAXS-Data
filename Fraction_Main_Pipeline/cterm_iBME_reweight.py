@@ -39,9 +39,10 @@ def concat_fractions(save_path):
         if not found_files:
             continue
 
+        sorted_files = natsorted(found_files)
         compiled_data = []
         pdb_names = []
-        for file in found_files:
+        for file in sorted_files:
             md_folder = os.path.basename(os.path.dirname(os.path.dirname(file)))
 
             df = pd.read_csv(file, sep='\s+', header=None)
@@ -57,6 +58,14 @@ def concat_fractions(save_path):
         final_df = pd.concat(compiled_data, ignore_index=True)
         output_file = os.path.join(compiled_dir, f"GP{i}_all_saxs.txt")
         final_df.to_csv(output_file, sep=' ', index=False, header=False)
+
+        if len(final_df) != len(pdb_names):
+            raise ValueError(f"GP{i} has {len(final_df)} calculation rows but {len(pdb_names)} PDB names.")
+        named_df = final_df.copy()
+        named_df.iloc[:, 0] = pdb_names
+        named_df.to_csv(
+            os.path.join(compiled_dir, f"GP{i}_all_saxs_pdb.txt"), sep=' ', index=False, header=False
+        )
 
         manifest_file = os.path.join(compiled_dir, f"GP{i}_manifest.txt")
         pd.Series(pdb_names).to_csv(manifest_file, header=None, index=False)
@@ -205,7 +214,14 @@ contents = pd.read_csv(manifest_path, header=None)
 opt_weight = pd.read_csv(best_weight_file, sep='\s+', header=None)
 
 if len(opt_weight) != len(contents):
-    print(f"Warning: Number of structures in {best_weight_file} does not match the number of structures in {manifest_path}.")
+    raise ValueError(
+        f"GP{weight_idx} has {len(contents)} PDB names but {len(opt_weight)} optimized weights."
+    )
+
+expected_indices = set(range(len(contents)))
+observed_indices = set(opt_weight.iloc[:, 0].astype(int))
+if observed_indices != expected_indices:
+    raise ValueError(f"Weight indices for GP{weight_idx} are not exactly 0 through {len(contents) - 1}.")
 
 opt_weight['PDB_Name'] = opt_weight.iloc[:, 0].map(contents.iloc[:, 0])
 opt_sorted = opt_weight.sort_values(by=1, ascending=False)

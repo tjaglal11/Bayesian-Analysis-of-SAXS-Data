@@ -51,17 +51,21 @@ for gl in "${grid_lines[@]}"; do
     echo "Running Pepsi-SAXS for grid point $grid_point (line $gl)..."
     mkdir -p "$GP_DIR"
   
-    > "$GP_DIR/calc_saxs.txt"   # clear old data
+    > "$GP_DIR/calc_saxs.txt"   # Numeric frame index; required by BME.
+    > "$GP_DIR/calc_saxs_pdb.txt"  # Matching rows, labelled with PDB basenames.
+    > "$GP_DIR/logPEPSI"
     # Loop over structure files
     for i in "${!structure_files[@]}"; do
-	echo "Processing structure $i: ${structure_files[$i]}"
         pdb_file="${structure_files[$i]}"
+	    pdb_name=$(basename "$pdb_file")
+        printf 'Evaluating structure %d/%d: %s\n' "$((i + 1))" "$ens_size" "$pdb_name" | tee -a "$GP_DIR/logPEPSI"
         $pepsi_path "$pdb_file" "$exp_path" -o "$GP_DIR/saxs$i.dat" \
             -cst --cstFactor 0 --I0 1.0 --dro $dro \
             --r0_min_factor $r0 --r0_max_factor $r0 --r0_N 1
        # Extract SAXS intensity column (q, I(q), etc.) — store only I(q)
         intensities=$(awk '!/^#/ {printf "%s ", $4}' "$GP_DIR/saxs$i.dat")
-	echo "$i $intensities" >> "$GP_DIR/calc_saxs.txt"
+        printf '%s %s\n' "$i" "$intensities" >> "$GP_DIR/calc_saxs.txt"
+        printf '%s %s\n' "$pdb_name" "$intensities" >> "$GP_DIR/calc_saxs_pdb.txt"
             
             
 
@@ -74,7 +78,7 @@ for gl in "${grid_lines[@]}"; do
         
 
         rm "$GP_DIR/saxs$i.log"
-    done > "$GP_DIR/logPEPSI"
+    done
 
     # Move any generated iBME files (if run separately)
     #mv gp${grid_point}_* GP$grid_point/ 2>/dev/null
