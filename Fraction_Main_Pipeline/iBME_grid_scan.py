@@ -54,18 +54,33 @@ def concat_fractions(save_path):
         sorted_files = natsorted(found_files)
 
         # 6. Read and append all found files together
+
+        named_files = [os.path.join(os.path.dirname(file), "calc_saxs_pdb.txt") for file in sorted_files]
+        missing_named_files = [path for path in named_files if not os.path.isfile(path)]
+        if missing_named_files:
+            raise FileNotFoundError(
+                f"Missing PDB files. first missing file {missing_named_files[0]}"
+            )
         compiled_data = []
-        for file in sorted_files:
+        compiled_named_data = []
+        for file, named_file in zip(sorted_files, named_files):
             # Assuming these are space-separated without headers
             df = pd.read_csv(file, sep='\s+', header=None)
             compiled_data.append(df)
+            compiled_named_data.append(pd.read_csv(named_file, sep='\s+', header=None))
 
         # 7. Concatenate all rows into one master DataFrame
         final_df = pd.concat(compiled_data, ignore_index=True)
+        final_named_df = pd.concat(compiled_named_data, ignore_index=True)
+        if len(final_df) != len(final_named_df):
+            raise ValueError("Number of rows in named and unnamed files do not match.")
 
         # 8. Save the master file for this GP
         output_file = os.path.join(compiled_dir, f"GP{i}_all_saxs.txt")
         final_df.to_csv(output_file, sep=' ', index=False, header=False)
+        final_named_df.to_csv(os.path.join(compiled_dir, f"GP{i}_all_saxs_pdb.txt"), sep=' ', index=False, header=False)
+
+        pd.Series(final_named_df.iloc[:, 0]).to_csv(os.path.join(compiled_dir, f"GP{i}_manifest.txt"), header=None, index=False)
 
         print(f"GP{i} compiled successfully: Merged {len(sorted_files)} fractions.")
 ############---------- MAIN

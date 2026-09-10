@@ -37,11 +37,25 @@ def concat_fractions(save_path):
             continue
 
         sorted_files = natsorted(found_files)
+        named_files = [os.path.join(os.path.dirname(file), "calc_saxs_pdb.txt") for file in sorted_files]
+        missing_named_files = [path for path in named_files if not os.path.isfile(path)]
+        if missing_named_files:
+            raise FileNotFoundError(
+                f"Missing PDB files. first missing file {missing_named_files[0]}"
+            )
+
         compiled_data = [pd.read_csv(file, sep='\s+', header=None) for file in sorted_files]
+        compiled_named_data = [pd.read_csv(file, sep='\s+', header=None) for file in named_files]
         final_df = pd.concat(compiled_data, ignore_index=True)
+        final_named_df = pd.concat(compiled_named_data, ignore_index=True)
+        if len(final_df) != len(final_named_df):
+            raise ValueError("Number of rows in named and unnamed files do not match.")
 
         output_file = os.path.join(compiled_dir, f"GP{i}_all_saxs.txt")
         final_df.to_csv(output_file, sep=' ', index=False, header=False)
+        named_output_file = os.path.join(compiled_dir, f"GP{i}_all_saxs_pdb.txt")
+        final_named_df.to_csv(named_output_file, sep=' ', index=False, header=False)
+        pd.Series(final_named_df.iloc[:, 0]).to_csv(os.path.join(compiled_dir, f"GP{i}_manifest.txt"), header=None, index=False)
 
 # ========= 2. RUN iBME LOOP =========
 concat_fractions(args.save_path)
@@ -182,10 +196,22 @@ weight_files_sorted = sorted(weight_files, key=lambda x: int(re.search(r"_(\d+)\
 best_weight_file = weight_files_sorted[-1]
 
 # Get a sorted list of ALL structure names to map the weights back to the PDBs
-all_structures = glob.glob(os.path.join(struc_path, "mm*", "*.pdb"))
-contents = pd.DataFrame(natsorted([os.path.basename(x) for x in all_structures]))
+#all_structures = glob.glob(os.path.join(struc_path, "mm*", "*.pdb"))
+#contents = pd.DataFrame(natsorted([os.path.basename(x) for x in all_structures]))
+
+#Use manifest file to save weights to pdb names
+manifest_path = os.path.join(compiled_dir, f"GP{weight_idx}_manifest.txt")
+contents = pd.read_csv(manifest_path, header=None)
 
 opt_weight = pd.read_csv(best_weight_file, sep='\s+', header=None)
+
+if len(contents) != len(opt_weight):
+    raise ValueError(f"Found {len(contents)} structures in manifest, but {len(opt_weight)} weights. Check the manifest and weights files.")
+
+expected_indices = set(range(len(contents)))
+observed_indices = set(opt_weight.iloc[:, 0].astype(int))
+if observed_indices != expected_indices:
+    raise ValueError(f"Mismatch in structure indices. Expected {expected_indices}, but found {observed_indices}.")
 opt_weight['PDB_Name'] = opt_weight.iloc[:, 0].map(contents.iloc[:, 0])
 opt_sorted = opt_weight.sort_values(by=1, ascending=False)
 

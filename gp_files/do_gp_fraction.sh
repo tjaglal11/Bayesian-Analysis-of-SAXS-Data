@@ -52,16 +52,22 @@ for gl in "${grid_lines[@]}"; do
     mkdir -p "$GP_DIR"
   
     > "$GP_DIR/calc_saxs.txt"   # clear old data
+    > "$GP_DIR/calc_saxs_pdb.txt"
+    > "$GP_DIR/logPEPSI"
     # Loop over structure files
     for i in "${!structure_files[@]}"; do
 	echo "Processing structure $i: ${structure_files[$i]}"
         pdb_file="${structure_files[$i]}"
+        pdb_name=$(basename "$pdb_file")
+        printf 'Evaluating structure' "$pdb_name" | tee -a "$GP_DIR/logPEPSI"
         $pepsi_path "$pdb_file" "$exp_path" -o "$GP_DIR/saxs$i.dat" \
             -cst --cstFactor 0 --I0 1.0 --dro $dro \
             --r0_min_factor $r0 --r0_max_factor $r0 --r0_N 1
        # Extract SAXS intensity column (q, I(q), etc.) — store only I(q)
         intensities=$(awk '!/^#/ {printf "%s ", $4}' "$GP_DIR/saxs$i.dat")
 	echo "$i $intensities" >> "$GP_DIR/calc_saxs.txt"
+	echo "$pdb_name $intensities" >> "$GP_DIR/calc_saxs_pdb.txt"
+
             
             
 
