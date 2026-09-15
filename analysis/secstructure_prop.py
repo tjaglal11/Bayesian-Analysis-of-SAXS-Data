@@ -72,10 +72,27 @@ def plot_traj(traj_list, outpath):
 
     return unique_struc
 
+def least_prop(manifest, traj_list):
+    if len(manifest) != len(traj_list):
+        raise("ERROR: Manifest and trajectory lists are not the same length.")
+
+    unique_struc = np.unique(traj_list)
+    least_files = {}
+
+    for struc in unique_struc:
+        propensities = np.array([np.mean(traj[0] == struc) for traj in traj_list])
+        least_file = manifest[np.argmin(propensities)]
+        least_files[struc] = least_file
+        print(f"Least propensity for {struc} secondary structure: {least_file}")
+
+    return least_files
+
 def main():
     manifest = pdb_manifest(pdb_path, "pdb")
     traj_list = pdb_to_traj(manifest)
     plot_traj(traj_list, save_path)
+    #Optional
+    least_prop(manifest, traj_list)
     print("Plotting complete.")
 if __name__ == "__main__":
     main()
