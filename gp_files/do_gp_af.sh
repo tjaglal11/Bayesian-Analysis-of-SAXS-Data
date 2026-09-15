@@ -11,25 +11,25 @@ output_dir=$6
 grep -v "#" $2 | awk '{print $1}' > "$output_dir/qvals.txt"
 
 
-# Check if structure directory exists
+#Check if structure directory exists
 if [[ ! -d "$structures" ]]; then
     echo "Error: structures not found: $structures"
     exit 1
 fi
 
-# Check if experimental data file exists
+#Check if experimental data file exists
 if [[ ! -f "$exp_path" ]]; then
     echo "Error: experimental data not found: $exp_path"
     exit 1
 fi
 
-# Get sorted list of structure files named mm016_*.pdb
+#Get sorted list of structure files named *.pdb
 structure_files=( $(find "$structures" -name "*.pdb" | sort -V) )
 ens_size=${#structure_files[@]}
 
-# Choose mode: single grid point or all
+#Choose mode: single grid point or all
 if [[ -n "$gl" ]]; then
-    # ----------- SINGLE GRID POINT MODE -----------
+    #Single grid point
     total_lines=$(grep -v "#" $5 | wc -l)
     if (( gl < 1 || gl > total_lines )); then
         echo "Error: Grid line $gl is out of range (1 to $total_lines)"
@@ -37,11 +37,11 @@ if [[ -n "$gl" ]]; then
     fi
     grid_lines=($gl)
 else
-    # ----------- ALL GRID POINTS MODE -------------
+    #Full grid scan
     grid_lines=( $(seq 1 $(grep -v "#" $5 | wc -l)) )
 fi
 
-# Loop over selected grid point lines
+#Loop over selected grid point lines
 for gl in "${grid_lines[@]}"; do
     grid_point=$(grep -v "#" $5 | sed -n "${gl}p" | awk '{print $1}')
     dro=$(grep -v "#" $5 | sed -n "${gl}p" | awk '{print $2}')
@@ -51,34 +51,36 @@ for gl in "${grid_lines[@]}"; do
     echo "Running Pepsi-SAXS for grid point $grid_point (line $gl)..."
     mkdir -p "$GP_DIR"
   
-    > "$GP_DIR/calc_saxs.txt"   # Numeric frame index; required by BME.
-    > "$GP_DIR/calc_saxs_pdb.txt"  # Matching rows, labelled with PDB basenames.
+    > "$GP_DIR/calc_saxs.txt"   #clear old data
+    > "$GP_DIR/Rg_env.dat"
+    > "$GP_DIR/calc_saxs_pdb.txt"
     > "$GP_DIR/logPEPSI"
-    # Loop over structure files
+    #Loop over structure files
     for i in "${!structure_files[@]}"; do
+	echo "Processing structure $i: ${structure_files[$i]}"
         pdb_file="${structure_files[$i]}"
-	    pdb_name=$(basename "$pdb_file")
-        printf 'Evaluating structure %d/%d: %s\n' "$((i + 1))" "$ens_size" "$pdb_name" | tee -a "$GP_DIR/logPEPSI"
+        pdb_name=$(basename "$pdb_file")
+        printf 'Evaluating structure' "$pdb_name" | tee -a "$GP_DIR/logPEPSI"
         $pepsi_path "$pdb_file" "$exp_path" -o "$GP_DIR/saxs$i.dat" \
             -cst --cstFactor 0 --I0 1.0 --dro $dro \
             --r0_min_factor $r0 --r0_max_factor $r0 --r0_N 1
-       # Extract SAXS intensity column (q, I(q), etc.) — store only I(q)
+       #Extract SAXS intensity column (q, I(q), etc.) — store only I(q)
         intensities=$(awk '!/^#/ {printf "%s ", $4}' "$GP_DIR/saxs$i.dat")
-        printf '%s %s\n' "$i" "$intensities" >> "$GP_DIR/calc_saxs.txt"
-        printf '%s %s\n' "$pdb_name" "$intensities" >> "$GP_DIR/calc_saxs_pdb.txt"
+	echo "$i $intensities" >> "$GP_DIR/calc_saxs.txt"
+	echo "$pdb_name $intensities" >> "$GP_DIR/calc_saxs_pdb.txt"
             
             
 
         rm "$GP_DIR/saxs$i.dat"
 
-        # Extract Rg only for grid_point == 0
+        #Extract Rg only for grid_point == 0
         
         grep "Radius of gyration of the envelope" "$GP_DIR/saxs$i.log" | \
             awk '{print $8}' >> "$GP_DIR/Rg_env.dat"
         
 
         rm "$GP_DIR/saxs$i.log"
-    done
+    done > "$GP_DIR/logPEPSI"
 
     # Move any generated iBME files (if run separately)
     #mv gp${grid_point}_* GP$grid_point/ 2>/dev/null
