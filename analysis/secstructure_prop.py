@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import argparse
 import glob
-from natsort import natsorted
+from natsort import natsorted, index_natsorted
 import mdtraj as md
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -72,6 +72,15 @@ def plot_traj(traj_list, outpath):
 
     return unique_struc
 
+def weighted_traj(traj_list, outpath, weights_path):
+
+
+    colors = sns.color_palette(palette='Set1')
+    unique_struc = np.unique(traj_list)
+
+
+
+
 def least_prop(manifest, traj_list):
     if len(manifest) != len(traj_list):
         raise("ERROR: Manifest and trajectory lists are not the same length.")
@@ -94,7 +103,10 @@ def main():
     #Optional
     least_prop(manifest, traj_list)
     print("Plotting complete.")
-if __name__ == "__main__":
-    main()
+
+weights = pd.read_csv("/home/malab/Downloads/asyn_t100_weights.txt", sep='\s+', header=[0])
+sorted = weights.loc[natsorted(weights.index, key=weights["PDB_Name"].get)]
+#if __name__ == "__main__":
+#    main()
 
 
