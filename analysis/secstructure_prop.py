@@ -73,13 +73,34 @@ def plot_traj(traj_list, outpath):
     return unique_struc
 
 def weighted_traj(traj_list, outpath, weights_path):
-
-
     colors = sns.color_palette(palette='Set1')
     unique_struc = np.unique(traj_list)
 
+    weights = pd.read_csv(weights_path, sep='\s+', header=[0])
+    sorted = weights.loc[natsorted(weights.index, key=weights["PDB_Name"].get)]
+    sorted_weights = np.array(sorted["Weight"])
 
+    for i, struc in enumerate(unique_struc):
+        print(f"Processing trajectories with secondary structure {struc}")
+        traj_2d = [item[0] for item in traj_list]
+        traj_df = pd.DataFrame(traj_2d)
 
+        traj_df_nums = traj_df.copy()
+        traj_df_nums = pd.DataFrame(np.where(traj_df_nums == struc, 1, 0))
+
+        #multiply every 1/0 by the weight, then take the mean
+        weighted_traj = traj_df_nums.multiply(sorted_weights, axis=0)
+        res_means = weighted_traj.mean()
+
+        fig, ax = plt.subplots(figsize=(12,4))
+
+        res_means.plot(kind="area", ax=ax, title=f"Weighted propensity of {struc} secondary structure", color=colors[i])
+        plt.xlabel("Residue number")
+        plt.ylabel("Propensity")
+        plt.savefig(
+            os.path.join(outpath, f"weighted_propensity_of_{struc}_secondary_structure.png")
+        )
+        plt.close()
 
 def least_prop(manifest, traj_list):
     if len(manifest) != len(traj_list):
