@@ -62,7 +62,7 @@ def plot_traj(traj_list, outpath):
 
         fig, ax = plt.subplots(figsize=(12, 4))
 
-        res_means.plot(kind="area", ax=ax, title=f"Propensity of {struc} secondary structure", color=colors[i])
+        res_means.plot(kind="line", ax=ax, title=f"Propensity of {struc} secondary structure", color=colors[i])
         plt.xlabel("Residue number")
         plt.ylabel("Propensity")
         plt.savefig(
@@ -72,31 +72,39 @@ def plot_traj(traj_list, outpath):
 
     return unique_struc
 
-def weighted_traj(traj_list, outpath, weights_path):
+def weighted_traj(traj_list, manifest, outpath, weights_path):
     colors = sns.color_palette(palette='Set1')
     unique_struc = np.unique(traj_list)
 
-    weights = pd.read_csv(weights_path, sep='\s+', header=[0])
-    sorted = weights.loc[natsorted(weights.index, key=weights["PDB_Name"].get)]
-    sorted_weights = np.array(sorted["Weight"])
+    weights_df = pd.read_csv(weights_path, sep='\s+', header=[0])
+    weights_df["PDB_Name"] = weights_df["PDB_Name"].str.replace(".pdb", "", regex=False)
+    weight_map = dict(zip(weights_df["PDB_Name"], weights_df["1"]))
+
+    pdb_names = [os.path.splitext(os.path.basename(p))[0] for p in manifest]
+    missing = [n for n in pdb_names if n not in weight_map]
+    if missing:
+        raise ValueError(f"Missing weights for the following PDBs: {missing}")
+    w = np.array([weight_map[n] for n in pdb_names], dtype=float)
+
+    traj_df = pd.DataFrame([item[0] for item in traj_list])
 
     for i, struc in enumerate(unique_struc):
         print(f"Processing trajectories with secondary structure {struc}")
-        traj_2d = [item[0] for item in traj_list]
-        traj_df = pd.DataFrame(traj_2d)
+        indicator = pd.DataFrame(np.where(traj_df == struc, 1, 0))
 
-        traj_df_nums = traj_df.copy()
-        traj_df_nums = pd.DataFrame(np.where(traj_df_nums == struc, 1, 0))
-
-        #multiply every 1/0 by the weight, then take the mean
-        weighted_traj = traj_df_nums.multiply(sorted_weights, axis=0)
-        res_means = weighted_traj.mean()
+        prior = indicator.mean()
+        post = indicator.multiply(w, axis=0).sum() / w.sum()
 
         fig, ax = plt.subplots(figsize=(12,4))
 
-        res_means.plot(kind="area", ax=ax, title=f"Weighted propensity of {struc} secondary structure", color=colors[i])
-        plt.xlabel("Residue number")
-        plt.ylabel("Propensity")
+        prior.plot(ax=ax, color="0.5", lw=1.2, label="Prior")
+        post.plot(ax=ax, color=colors[i], lw=1.5, label="Posterior")
+        ax.fill_between(prior.index, prior, post, color=colors[i], alpha=0.25)
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("Propensity")
+        ax.set_xlabel("Residue number")
+        ax.set_title(f"Propensity of {struc} secondary structure")
+        ax.legend()
         plt.savefig(
             os.path.join(outpath, f"weighted_propensity_of_{struc}_secondary_structure.png")
         )
