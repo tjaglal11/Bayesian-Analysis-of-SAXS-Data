@@ -16,6 +16,8 @@ parser.add_argument("out_path", type=str, default="", help="Path to the output d
 parser.add_argument("weights_path", type=str, default="", help="Path to the weights txt file")
 args = parser.parse_args()
 
+experimental_rg = 34
+
 #####-----FUNCTIONS
 def pdb_manifest(pdbs, pdb):
     search_pattern = os.path.join(pdbs, "*.pdb")
@@ -44,7 +46,7 @@ def pdb_to_rg(manifest):
 def weighted_rg(traj_list, manifest, outpath, weights_path):
     colors = sns.color_palette(palette='Set1')
     
-    weights_df = pd.read_csv(weights_path, sep='\s+', header=[0])
+    weights_df = pd.read_csv(weights_path, sep=r'\s+', header=[0])
     weights_df["PDB_Name"] = weights_df["PDB_Name"].str.replace(".pdb", "" , regex=False)
     weight_map = dict(zip(weights_df["PDB_Name"], weights_df["1"]))
 
@@ -54,18 +56,17 @@ def weighted_rg(traj_list, manifest, outpath, weights_path):
         raise ValueError(f"Missing weights for the following PDBs: {missing}")
     w = np.array([weight_map[n] for n in pdb_names], dtype=float)
 
-    traj_df = pd.DataFrame([item[0] for item in traj_list])
-
-    prior_weights = np.ones(len(traj_df)) / len(traj_df)
+    rg_vals = np.array([rg[0] for rg in traj_list])
+    prior_weights = np.ones(len(rg_vals)) / len(rg_vals)
     
     plt.figure(figsize=(10,10))
     sns.set_style("ticks")
 
-    sns.kdeplot(x=traj_df, weights=prior_weights, color='red', label='Prior ensemble')
-    sns.kdeplot(x=traj_df, weights=w, color='blue', label='Posterior ensemble')
+    sns.kdeplot(x=rg_vals, weights=prior_weights, color='red', label='Prior ensemble')
+    sns.kdeplot(x=rg_vals, weights=w, color='blue', label='Posterior ensemble')
     plt.axvline(x=experimental_rg, color='green', linestyle='--', label='Experimental Rg')
 
-    plt.xlabel('Rg in Angstrom')
+    plt.xlabel('Rg in nm')
     plt.ylabel('Density')
     plt.title('Rg distribution in prior and posterior ensembles')
     plt.legend()
