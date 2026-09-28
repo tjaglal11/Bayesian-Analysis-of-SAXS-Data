@@ -3,14 +3,13 @@ import glob
 import pandas as pd
 import numpy as np
 import re
-from natsort import natsorted
 from datetime import date
 import argparse
 import yaml
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", type=str, default="config.yaml", help="Path to main YAML file")
-args = parser.parse_parser_args() if hasattr(parser, 'parse_parser_args') else parser.parse_args()
+args = parser.parse_args()
 
 with open(args.config, "r") as f:
     master_config = yaml.safe_load(f)
@@ -18,7 +17,6 @@ with open(args.config, "r") as f:
 sw_config = master_config.get("save_weights", {})
 
 save_path = sw_config.get("save_path", "")
-struc_path = sw_config.get("struc_path", "")
 ibme_out_dir = sw_config.get("ibme_out_dir", "")
 ty = sw_config.get("type", "")
 custom_dro = sw_config.get("custom_dro", "")
@@ -31,7 +29,7 @@ today = date.today()
 # --- Reload Data ---
 print("Loading previously computed grid data...")
 GRID_DF = pd.read_csv(grid_file_path, sep=r'\s+', header=None, names=['index', 'dro', 'r0'])
-grid = np.genfromtxt(grid_sum_path, skip_header=1, delimiter=',', filling_values=np.nan) 
+grid = np.genfromtxt(grid_sum_path, skip_header=1, delimiter=',', filling_values=np.nan)
 
 # --- Recalculate Best dro and r0 ---
 chi2 = np.clip(grid[:,4], 1e-12, None)
@@ -47,9 +45,12 @@ print(f"Recovered Best Parameters -> δρ={best_dro:.2f}, r0={best_r0:.3f}")
 
 #Execute SAVE Logic
 if ty == "custom":
-    weight_idx = GRID_DF.index[(GRID_DF['dro'] == custom_dro) & (GRID_DF['r0'] == custom_r0)].tolist()[0]
+    match = GRID_DF.index[np.isclose(GRID_DF['dro'], float(custom_dro)) & np.isclose(GRID_DF['r0'], float(custom_r0))].tolist()
+    if not match:
+        raise ValueError(f"Grid point (dro={custom_dro}, r0={custom_r0}) not found in {grid_file_path}")
+    weight_idx = match[0]
 else:
-    weight_idx = GRID_DF.index[(GRID_DF['dro'] == best_dro) & (GRID_DF['r0'] == best_r0)].tolist()[0]
+    weight_idx = int(grid[best_idx, 0])
 
 best_gp_dir = os.path.join(ibme_out_dir, f"GP{weight_idx}")
 
@@ -57,25 +58,28 @@ best_gp_dir = os.path.join(ibme_out_dir, f"GP{weight_idx}")
 weight_files = glob.glob(os.path.join(best_gp_dir, "*.weights.dat"))
 if not weight_files:
     raise FileNotFoundError(f"No .weights.dat files found in {best_gp_dir}")
-    
+
 weight_files_sorted = sorted(weight_files, key=lambda x: int(re.search(r"_(\d+)\.weights\.dat", os.path.basename(x)).group(1)))
 best_weight_file = weight_files_sorted[-1]
 
-#Get a sorted list of ALL structure names to map the weights back to the PDBs
-all_structures = glob.glob(os.path.join(struc_path, "*.pdb"))
-contents = pd.DataFrame(natsorted([os.path.basename(x) for x in all_structures]))
+#Use the manifest written by concat_fractions: row i of the iBME calc file <-> line i of the manifest
+manifest_path = os.path.join(save_path, "compiled_GPs", f"GP{weight_idx}_manifest.txt")
+if not os.path.isfile(manifest_path):
+    raise FileNotFoundError(f"Missing manifest {manifest_path}. Re-run the grid with do_gp_fraction_e.sh so calc_saxs_pdb.txt is written.")
+contents = pd.read_csv(manifest_path, header=None)
 
 #Map and save
 opt_weight = pd.read_csv(best_weight_file, sep=r'\s+', header=None)
 if opt_weight.empty or len(opt_weight.columns) < 2:
     raise ValueError(f"Weight file {best_weight_file} is empty or has insufficient columns")
 
-if contents.empty:
-    raise ValueError(f"No structures found in {struc_path}")
+if len(contents) != len(opt_weight):
+    raise ValueError(f"Manifest has {len(contents)} structures but {best_weight_file} has {len(opt_weight)} weights.")
 
-#Create a mapping dictionary from the contents DataFrame
-pdb_name_map = {i: name for i, name in enumerate(contents.iloc[:, 0])}
-opt_weight['PDB_Name'] = opt_weight.iloc[:, 0].map(contents.iloc[:, 0])
+if set(opt_weight.iloc[:, 0].astype(int)) != set(range(len(contents))):
+    raise ValueError("Weight indices are not 0..N-1; cannot map to manifest by position.")
+
+opt_weight['PDB_Name'] = opt_weight.iloc[:, 0].astype(int).map(contents.iloc[:, 0])
 opt_sorted = opt_weight.sort_values(by=1, ascending=False)
 
 if ty == "custom":
