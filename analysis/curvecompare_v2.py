@@ -45,13 +45,17 @@ def find_data(main_path, ibme_path, manifest):
 
     #Find the GP files in compiled_GPs
     weight_idx = int(gridsum_df[best_idx, 0])
-    saxs_data = pd.read_csv(f"{main_path}/compiled_GPs/GP{weight_idx}_all_saxs.txt", sep=',')
-    q_vals = pd.read_csv(f"{main_path}/amm16_100/qvals.txt", sep=',') #not sure this is the best way to grab
+    saxs_data = pd.read_csv(f"{main_path}/compiled_GPs/GP{weight_idx}_all_saxs.txt", sep=r'\s+', header=None, index_col=0)
+    q_vals = pd.read_csv(f"{main_path}/amm16_100/qvals.txt", sep=',', header=None) #not sure this is the best way to grab
 
     print(f"Recovered file {main_path}/compiled_GPs/GP{weight_idx}_all_saxs.txt containing {len(saxs_data)} Saxs Data Points.")
 
     #Find weights file and sort
-    weights_file = pd.read_csv(f"{ibme_path}/structure_weights_*.dat", sep=r'\s+', header=[0])
+    w_path_pattern = os.path.join(f"{ibme_path}/structure_weights_*.txt")
+    matching_files = glob.glob(w_path_pattern)
+    w_path = matching_files[0]
+
+    weights_file = pd.read_csv(w_path, sep=r'\s+', header=[0])
     weights_file["PDB_Name"] = weights_file["PDB_Name"].str.replace(".pdb", "", regex=False)
     weight_map = dict(zip(weights_file["PDB_Name"], weights_file["1"]))
 
@@ -61,19 +65,26 @@ def find_data(main_path, ibme_path, manifest):
         raise ValueError(f"Missing weights for the following PDBs: {missing}")
     w = np.array([weight_map[n] for n in pdb_names], dtype=float)
 
-    print(f"Recovered weights file {ibme_path}/structure_weights_*.dat containing {len(weights_file)} weights and sorted by PDB name.")
+    print(f"Recovered weights file {ibme_path}/structure_weights_*.txt containing {len(weights_file)} weights and sorted by PDB name.")
+
+    print("rows in weights file:", len(weights_file), "| manifest:", len(pdb_names))
+    print("NaN weights:", np.isnan(w).sum(), "| sum:", w.sum())
+    print(weights_file[weights_file["1"].isna()].head())
 
     return saxs_data, q_vals, w
 
 def create_profiles(saxs_data, q_vals, w):
-    saxs_prior = saxs_data.mean(numeric_only=True).to_numpy()
+    saxs_num = saxs_data.select_dtypes(include="number")
+    saxs_prior = saxs_data.mean(axis=0).to_numpy()
 
     if q_vals.empty:
         q = np.asarray(q_vals.columns, dtype=float)
     else:
         q = q_vals.to_numpy(dtype=float).ravel()
 
-    saxs_weights = saxs_data.multiply(w, axis=0).sum() / w.sum()
+    if len(saxs_num) != len(w):
+        raise ValueError(f"{len(saxs_num)} SAXS rows but {len(w)} weights")
+    saxs_weights = saxs_data.multiply(w, axis=0).sum(axis=0) / w.sum()
 
     return q, saxs_prior, saxs_weights
 
@@ -81,12 +92,14 @@ def experiment_analysis(exp_path):
     #Find the saxs data for the experiment
     exp_data = pd.read_csv(exp_path, sep=r'\s+', header=None)
 
-    e_s = exp_data.iloc[:,0]
-    e_iq = exp_data.iloc[:,1]
-    e_err = exp_data.iloc[:,2]
+    e_s = exp_data.iloc[:,0].to_numpy(dtype=float)
+    e_iq = exp_data.iloc[:,1].to_numpy(dtype=float)
+    e_err = exp_data.iloc[:,2].to_numpy(dtype=float)
+
+    data = np.column_stack((e_s, e_iq, e_err))
 
     #Determine the experimental radius of gyration
-    e_rg = auto_guinier(e_s, e_iq, e_err)
+    e_rg = auto_guinier(data).Rg
 
     return e_s, e_iq, e_err, e_rg
 
@@ -94,7 +107,7 @@ def pdb_to_rg(manifest, w):
 
     rg_list = []
     for i in range(manifest.shape[0]):
-        print(f"Processing {manifest[i]}")
+        #print(f"Processing {manifest[i]}")
 
         traj = md.load(manifest[i])
         rg = md.compute_rg(traj)
@@ -103,9 +116,16 @@ def pdb_to_rg(manifest, w):
 
     rg_vals = np.array([rg[0] for rg in rg_list])
     prior_rg = np.mean(rg_vals)
-    post_rg = rg_vals.multiply(w, axis=0).sum() / w.sum()
+    post_rg = np.sum(rg_vals * w) / w.sum()
 
     return prior_rg, post_rg
+
+def fit_scale(q, I_model, e_s, e_iq, e_err):
+    I_interp = np.interp(e_s, q, I_model)
+    wts = 1.0 / e_err**2
+    c = np.sum(wts * e_iq * I_interp) / np.sum(wts * I_interp**2)
+
+    return c * I_model
 
 def plot_saxs(q, saxs_prior, saxs_weights, e_s, e_iq, e_err, e_rg, prior_rg, post_rg, out_path):
     fix, ax = plt.subplots(figsize=(10,10))
@@ -113,18 +133,18 @@ def plot_saxs(q, saxs_prior, saxs_weights, e_s, e_iq, e_err, e_rg, prior_rg, pos
     ax.errorbar(e_s, e_iq, yerr=e_err, fmt='o', markersize=3, ecolor="lightgray", label="Experiment", zorder=1)
     ax.set_yscale("log")
 
-    ax.plot(q, saxs_prior, label="Prior", color='green')
-    ax.plot(q, saxs_weights, label="Posterior", color='yellow')
+    ax.plot(q, fit_scale(q, saxs_prior, e_s, e_iq, e_err), label="Prior", color='lightcoral')
+    ax.plot(q, fit_scale(q, saxs_weights, e_s, e_iq, e_err), label="Posterior", color='red')
     ax.set_xlabel("Q")
     ax.set_ylabel("I(q)")
 
     leg_post = ax.legend(loc="upper right")
     ax.add_artist(leg_post)
 
-    rg_handles_post = [mlines.Line2d([], [], color='none', label=f"Exp Rg: {e_rg:.2f} nm")]
+    rg_handles_post = [mlines.Line2D([], [], color='none', label=f"Exp Rg: {e_rg:.2f} nm")]
 
-    prior_label = fr"Posterior rg: {prior_rg:.2f} nm"
-    post_label = fr"Prior rg: {post_rg:.2f} nm"
+    prior_label = fr"Prior rg: {prior_rg:.2f} nm"
+    post_label = fr"Posterior rg: {post_rg:.2f} nm"
     rg_handles_post.append(mlines.Line2D([], [], color='none', label=prior_label))
     rg_handles_post.append(mlines.Line2D([], [], color='none', label=post_label))
 
